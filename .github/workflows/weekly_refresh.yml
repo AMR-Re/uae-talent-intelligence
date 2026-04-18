@@ -1,0 +1,50 @@
+name: Weekly UAE Jobs Refresh
+
+on:
+  schedule:
+    # Every Monday at 04:00 UTC = 08:00 UAE time (GST = UTC+4)
+    - cron: '0 4 * * 1'
+  workflow_dispatch:   # allows manual trigger from GitHub Actions UI
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m spacy download en_core_web_sm
+
+      - name: Run ETL pipeline → Supabase
+        env:
+          # API keys
+          RAPIDAPI_KEY:     ${{ secrets.RAPIDAPI_KEY }}
+          ADZUNA_APP_ID:    ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY:   ${{ secrets.ADZUNA_APP_KEY }}
+          EXCHANGE_API_KEY: ${{ secrets.EXCHANGE_API_KEY }}
+          # Database — GitHub Actions always writes to Supabase (cloud)
+          DB_TARGET:        supabase
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+        run: python run_pipeline.py
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "❌ Pipeline failed — check logs above"
