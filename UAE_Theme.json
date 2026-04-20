@@ -1,0 +1,16 @@
+{
+  "name": "UAE Talent Intel",
+  "dataColors": [
+    "#0ea5e9",
+    "#22c55e",
+    "#f59e0b",
+    "#a855f7",
+    "#ef4444",
+    "#14b8a6",
+    "#f97316",
+    "#6366f1"
+  ],
+  "background": "#0f172a",
+  "foreground": "#e2e8f0",
+  "tableAccent": "#0ea5e9"
+}

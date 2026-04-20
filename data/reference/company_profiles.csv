@@ -1,0 +1,45 @@
+company_name,company_size_band,is_mnc,company_hq_country,company_industry,glassdoor_rating
+Accenture Middle East,1000+,True,Ireland,Technology Consulting,3.9
+Deloitte Middle East,1000+,True,UK,Professional Services,3.8
+PwC Middle East,1000+,True,UK,Professional Services,3.9
+KPMG Middle East,1000+,True,Netherlands,Professional Services,3.7
+EY Middle East,1000+,True,UK,Professional Services,3.8
+McKinsey & Company,1000+,True,US,Management Consulting,3.7
+Boston Consulting Group,1000+,True,US,Management Consulting,4.0
+Oliver Wyman,1000+,True,US,Management Consulting,3.9
+ADNOC,1000+,False,UAE,Oil & Gas,3.8
+ADNOC Distribution,1000+,False,UAE,Oil & Gas Retail,3.6
+Mubadala Investment Company,1000+,False,UAE,Investment,4.1
+Abu Dhabi Islamic Bank,1000+,False,UAE,Banking,3.5
+First Abu Dhabi Bank,1000+,False,UAE,Banking,3.6
+Emirates NBD,1000+,False,UAE,Banking,3.6
+Mashreq Bank,1000+,False,UAE,Banking,3.5
+HSBC Middle East,1000+,True,UK,Banking,3.6
+Standard Chartered UAE,1000+,True,UK,Banking,3.7
+Emaar Properties,1000+,False,UAE,Real Estate,3.5
+DAMAC Properties,1000+,False,UAE,Real Estate,3.2
+Aldar Properties,1000+,False,UAE,Real Estate,3.7
+DP World,1000+,False,UAE,Logistics,3.6
+Etisalat (e&),1000+,False,UAE,Telecommunications,3.5
+du Telecom,1000+,False,UAE,Telecommunications,3.6
+Amazon UAE,1000+,True,US,E-Commerce / Technology,3.8
+noon,1000+,False,UAE,E-Commerce,3.4
+Careem,201-1000,False,UAE,Technology,3.9
+Talabat,201-1000,False,UAE,Food Delivery,3.5
+Majid Al Futtaim,1000+,False,UAE,Retail / Real Estate,3.7
+Al-Futtaim Group,1000+,False,UAE,Diversified,3.6
+Landmark Group,1000+,False,UAE,Retail,3.4
+Hays UAE,201-1000,True,UK,Recruitment,3.8
+Michael Page UAE,201-1000,True,UK,Recruitment,3.9
+Robert Half UAE,51-200,True,US,Recruitment,3.7
+Manpower UAE,201-1000,True,Switzerland,Recruitment,3.4
+SAP Middle East,1000+,True,Germany,Enterprise Software,3.9
+Microsoft UAE,1000+,True,US,Technology,4.2
+Oracle UAE,1000+,True,US,Technology,3.8
+Salesforce UAE,1000+,True,US,Technology,4.4
+ServiceNow UAE,201-1000,True,US,Technology,4.5
+Workday Middle East,201-1000,True,US,HR Technology,4.3
+Siemens UAE,1000+,True,Germany,Industrial,3.7
+Honeywell UAE,1000+,True,US,Industrial Technology,3.8
+Nestlé UAE,1000+,True,Switzerland,FMCG,3.7
+Unilever UAE,1000+,True,UK,FMCG,3.9

@@ -1,0 +1,123 @@
+title_normalized,seniority_band,median_aed_monthly,p25_aed_monthly,p75_aed_monthly,sample_size,source_notes
+HR Business Partner,Junior,12000,10000,14000,42,Gulf Talent 2025 / Hays UAE
+HR Business Partner,Mid-Level,20000,17000,24000,89,Gulf Talent 2025 / Hays UAE
+HR Business Partner,Senior,27000,23000,32000,74,Gulf Talent 2025 / Hays UAE
+HR Business Partner,Manager,33000,28000,40000,51,Gulf Talent 2025 / Hays UAE
+HR Business Partner,Director+,55000,45000,70000,28,Gulf Talent 2025 / Hays UAE
+HR Manager,Junior,13000,11000,16000,38,Gulf Talent 2025
+HR Manager,Mid-Level,22000,18000,27000,95,Gulf Talent 2025
+HR Manager,Senior,30000,25000,37000,61,Gulf Talent 2025
+HR Manager,Manager,38000,32000,46000,44,Gulf Talent 2025
+HR Manager,Director+,60000,50000,75000,19,Gulf Talent 2025
+HR Director,Manager,45000,38000,55000,32,Hays UAE 2025
+HR Director,Director+,75000,62000,95000,41,Hays UAE 2025
+HR Director,C-Suite,95000,80000,120000,15,Hays UAE 2025
+CHRO,Director+,90000,75000,110000,22,Hays UAE 2025
+CHRO,C-Suite,130000,105000,160000,18,Hays UAE 2025
+Talent Acquisition,Junior,10000,8500,12500,66,Michael Page UAE 2025
+Talent Acquisition,Mid-Level,16000,13000,20000,112,Michael Page UAE 2025
+Talent Acquisition,Senior,22000,18000,27000,78,Michael Page UAE 2025
+Talent Acquisition,Manager,30000,25000,37000,45,Michael Page UAE 2025
+Talent Acquisition,Director+,50000,42000,62000,21,Michael Page UAE 2025
+Recruiter,Junior,9000,7500,11000,88,Gulf Talent 2025
+Recruiter,Mid-Level,14000,11000,17500,134,Gulf Talent 2025
+Recruiter,Senior,20000,16000,24000,72,Gulf Talent 2025
+Recruiter,Manager,27000,22000,33000,38,Gulf Talent 2025
+People Analytics,Mid-Level,22000,18000,27000,34,LinkedIn Salary 2025
+People Analytics,Senior,30000,25000,38000,29,LinkedIn Salary 2025
+People Analytics,Manager,42000,35000,52000,18,LinkedIn Salary 2025
+People Analytics,Director+,60000,50000,75000,11,LinkedIn Salary 2025
+Payroll Specialist,Junior,9000,7500,11000,55,Gulf Talent 2025
+Payroll Specialist,Mid-Level,14000,12000,17000,89,Gulf Talent 2025
+Payroll Specialist,Senior,19000,16000,23000,47,Gulf Talent 2025
+Payroll Specialist,Manager,27000,22000,33000,31,Gulf Talent 2025
+L&D Specialist,Junior,10000,8500,12000,44,Hays UAE 2025
+L&D Specialist,Mid-Level,16000,13000,20000,72,Hays UAE 2025
+L&D Specialist,Senior,22000,18000,28000,51,Hays UAE 2025
+L&D Specialist,Manager,32000,27000,40000,28,Hays UAE 2025
+L&D Specialist,Director+,52000,43000,65000,14,Hays UAE 2025
+Compensation & Benefits,Mid-Level,18000,15000,22000,41,Gulf Talent 2025
+Compensation & Benefits,Senior,26000,21000,32000,35,Gulf Talent 2025
+Compensation & Benefits,Manager,38000,32000,47000,22,Gulf Talent 2025
+Compensation & Benefits,Director+,58000,48000,72000,12,Gulf Talent 2025
+Employee Relations,Mid-Level,15000,12000,19000,38,Hays UAE 2025
+Employee Relations,Senior,22000,18000,27000,29,Hays UAE 2025
+Employee Relations,Manager,30000,25000,37000,18,Hays UAE 2025
+Workforce Planner,Mid-Level,18000,14000,22000,26,LinkedIn Salary 2025
+Workforce Planner,Senior,26000,21000,32000,19,LinkedIn Salary 2025
+Workforce Planner,Manager,36000,30000,44000,13,LinkedIn Salary 2025
+Organisational Development,Mid-Level,20000,16000,25000,22,Hays UAE 2025
+Organisational Development,Senior,28000,23000,35000,17,Hays UAE 2025
+Organisational Development,Manager,38000,32000,47000,11,Hays UAE 2025
+Succession Planning,Senior,25000,20000,31000,14,Gulf Talent 2025
+Succession Planning,Manager,36000,30000,44000,9,Gulf Talent 2025
+Data Analyst,Junior,11000,9000,13500,98,LinkedIn Salary 2025
+Data Analyst,Mid-Level,18000,15000,22000,156,LinkedIn Salary 2025
+Data Analyst,Senior,26000,21000,32000,89,LinkedIn Salary 2025
+Data Analyst,Manager,36000,30000,44000,42,LinkedIn Salary 2025
+Data Analyst,Director+,55000,45000,68000,19,LinkedIn Salary 2025
+Data Engineer,Junior,14000,11000,17000,72,LinkedIn Salary 2025
+Data Engineer,Mid-Level,22000,18000,27000,118,LinkedIn Salary 2025
+Data Engineer,Senior,32000,26000,40000,74,LinkedIn Salary 2025
+Data Engineer,Manager,44000,37000,54000,31,LinkedIn Salary 2025
+Data Engineer,Director+,65000,54000,80000,14,LinkedIn Salary 2025
+BI Developer,Junior,12000,10000,15000,61,LinkedIn Salary 2025
+BI Developer,Mid-Level,19000,16000,24000,99,LinkedIn Salary 2025
+BI Developer,Senior,27000,22000,34000,58,LinkedIn Salary 2025
+BI Developer,Manager,38000,32000,47000,25,LinkedIn Salary 2025
+Software Engineer,Junior,13000,11000,16000,145,LinkedIn Salary 2025
+Software Engineer,Mid-Level,22000,18000,28000,221,LinkedIn Salary 2025
+Software Engineer,Senior,33000,27000,41000,134,LinkedIn Salary 2025
+Software Engineer,Manager,46000,38000,57000,67,LinkedIn Salary 2025
+Software Engineer,Director+,68000,56000,85000,29,LinkedIn Salary 2025
+Product Manager,Junior,15000,12000,18000,55,LinkedIn Salary 2025
+Product Manager,Mid-Level,25000,21000,31000,89,LinkedIn Salary 2025
+Product Manager,Senior,36000,30000,45000,61,LinkedIn Salary 2025
+Product Manager,Manager,50000,42000,62000,34,LinkedIn Salary 2025
+Product Manager,Director+,72000,60000,90000,18,LinkedIn Salary 2025
+Financial Analyst,Junior,11000,9000,14000,88,Hays UAE 2025
+Financial Analyst,Mid-Level,18000,15000,22000,132,Hays UAE 2025
+Financial Analyst,Senior,26000,21000,32000,79,Hays UAE 2025
+Financial Analyst,Manager,37000,31000,46000,41,Hays UAE 2025
+Financial Analyst,Director+,58000,48000,72000,19,Hays UAE 2025
+FP&A Analyst,Mid-Level,20000,16000,25000,45,Hays UAE 2025
+FP&A Analyst,Senior,29000,24000,36000,33,Hays UAE 2025
+FP&A Analyst,Manager,42000,35000,52000,22,Hays UAE 2025
+FP&A Analyst,Director+,62000,52000,77000,11,Hays UAE 2025
+Financial Modelling Analyst,Mid-Level,21000,17000,26000,28,Hays UAE 2025
+Financial Modelling Analyst,Senior,30000,25000,38000,21,Hays UAE 2025
+Financial Modelling Analyst,Manager,43000,36000,53000,13,Hays UAE 2025
+Internal Auditor,Junior,10000,8500,12500,42,Gulf Talent 2025
+Internal Auditor,Mid-Level,17000,14000,21000,68,Gulf Talent 2025
+Internal Auditor,Senior,24000,20000,30000,45,Gulf Talent 2025
+Internal Auditor,Manager,34000,28000,42000,26,Gulf Talent 2025
+Internal Auditor,Director+,54000,45000,67000,12,Gulf Talent 2025
+Marketing Manager,Junior,11000,9000,14000,55,LinkedIn Salary 2025
+Marketing Manager,Mid-Level,18000,15000,23000,89,LinkedIn Salary 2025
+Marketing Manager,Senior,26000,21000,33000,61,LinkedIn Salary 2025
+Marketing Manager,Manager,36000,30000,45000,38,LinkedIn Salary 2025
+Marketing Manager,Director+,56000,46000,70000,17,LinkedIn Salary 2025
+Operations Manager,Junior,12000,10000,15000,67,Gulf Talent 2025
+Operations Manager,Mid-Level,20000,16000,25000,112,Gulf Talent 2025
+Operations Manager,Senior,29000,24000,36000,78,Gulf Talent 2025
+Operations Manager,Manager,40000,33000,50000,44,Gulf Talent 2025
+Operations Manager,Director+,62000,52000,78000,21,Gulf Talent 2025
+Project Manager,Junior,13000,11000,16000,72,Gulf Talent 2025
+Project Manager,Mid-Level,21000,17000,26000,118,Gulf Talent 2025
+Project Manager,Senior,30000,25000,38000,84,Gulf Talent 2025
+Project Manager,Manager,42000,35000,52000,49,Gulf Talent 2025
+Project Manager,Director+,63000,52000,79000,22,Gulf Talent 2025
+Supply Chain Manager,Junior,11000,9000,14000,48,Hays UAE 2025
+Supply Chain Manager,Mid-Level,19000,15000,23000,78,Hays UAE 2025
+Supply Chain Manager,Senior,27000,22000,34000,52,Hays UAE 2025
+Supply Chain Manager,Manager,38000,32000,47000,29,Hays UAE 2025
+Supply Chain Manager,Director+,60000,50000,75000,13,Hays UAE 2025
+Logistics Manager,Junior,10000,8500,12500,55,Gulf Talent 2025
+Logistics Manager,Mid-Level,17000,14000,21000,88,Gulf Talent 2025
+Logistics Manager,Senior,24000,20000,30000,58,Gulf Talent 2025
+Logistics Manager,Manager,33000,27000,41000,32,Gulf Talent 2025
+Procurement Manager,Junior,11000,9000,13500,44,Hays UAE 2025
+Procurement Manager,Mid-Level,18000,15000,22000,71,Hays UAE 2025
+Procurement Manager,Senior,26000,21000,32000,47,Hays UAE 2025
+Procurement Manager,Manager,37000,31000,46000,25,Hays UAE 2025
+Procurement Manager,Director+,57000,47000,71000,11,Hays UAE 2025
