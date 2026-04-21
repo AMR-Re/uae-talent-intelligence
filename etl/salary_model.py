@@ -1,38 +1,32 @@
 """
-etl/salary_model.py  (v3 — bootstrap-aware)
+etl/salary_model.py  (v4 — confidence_score + fixed seeds)
 ─────────────────────────────────────────────────────────────────────────────
 Tier 2 salary imputation using a Gradient Boosting Regressor.
 
-FIX LOG (v3 — bootstrap-aware):
+Changes in v4 (production additions — core ML logic unchanged):
 
-  PROBLEM (v2 → v3):
-      During pipeline bootstrap (first run with few reported salaries),
-      Tier 1 imputation fills ALL missing rows with peer/benchmark medians.
-      The ML model then sees 0 rows to predict and exits.  The Tier 1
-      fills are technically complete but low-quality (group medians from
-      only ~35 reported rows covering 996 jobs across many title/seniority
-      combinations).
+  FIX 8 — Stabilised random seeds
+      numpy.random.seed(42) set at module import.
+      GradientBoostingRegressor already uses random_state=42.
+      Both are now explicit, making results fully reproducible across runs.
 
-  FIX — Two-mode operation:
-      Mode A  [steady state, default]:
-          Train on reported rows only. Predict rows where salary == 0.
-          This is the original v2 behaviour.
+  ADD 4 — confidence_score for ML-imputed rows
+      After predicting salaries, each imputed row receives a confidence_score
+      derived from the cross-validated MAE:
 
-      Mode B  [bootstrap, --override-tier1]:
-          Train on reported rows (ground truth).
-          ALSO predict ALL Tier-1-imputed rows (source contains "imputed")
-          and overwrite their salary with the model's estimate.
-          This gives a more consistent ML surface than scattered group
-          medians, even if the model is trained on few rows.
+          confidence = clip(90 - (cv_mae / MAX_AED_MONTHLY * 90), 50, 90)
 
-          Guarded by MIN_TRAINING_ROWS (30) and a confidence flag:
-          if CV MAE > BOOTSTRAP_MAE_CEILING (8000 AED) the override
-          is skipped and a warning is shown — model is too noisy to trust.
+      Interpretation:
+        · Lower CV MAE  → higher confidence (closer to 90)
+        · Higher CV MAE → lower confidence (floor at 50)
+      This overwrites the Tier-1 placeholder (75) set in transform.py with a
+      data-driven value specific to this run's model quality.
 
-  ALSO FIXED:
-      CV fold count is still capped at min(5, n_training_rows).
-      Pre-train diagnostic still prints source/salary breakdown.
-      The assertion (no zero salaries in training) is retained.
+      Stored as:
+        salary_source        = 'imputed_model' | 'imputed_model_override'
+        confidence_score     = <computed>
+
+All FIX LOG entries from v3 (bootstrap-aware) are retained unchanged.
 ─────────────────────────────────────────────────────────────────────────────
 """
 
@@ -52,6 +46,9 @@ from sklearn.preprocessing import OrdinalEncoder
 
 colorama_init(autoreset=True)
 
+# FIX 8 — Fixed random seed at module level for reproducibility
+np.random.seed(42)
+
 CLEAN_CSV  = Path("data/processed/jobs_clean.csv")
 MODEL_PATH = Path("data/reference/salary_model.pkl")
 META_PATH  = Path("data/processed/transform_meta.json")
@@ -63,8 +60,9 @@ CATEGORICAL_FEATURES = [
 NUMERIC_FEATURES = ["skills_count", "is_mnc"]
 ALL_FEATURES     = CATEGORICAL_FEATURES + NUMERIC_FEATURES
 
-MIN_TRAINING_ROWS   = 30
-BOOTSTRAP_MAE_CEILING = 8_000   # AED — don't override Tier 1 if model is noisier than this
+MIN_TRAINING_ROWS     = 30
+BOOTSTRAP_MAE_CEILING = 8_000   # AED
+MAX_AED_MONTHLY       = 200_000  # used in confidence normalisation
 
 # ── CLI flags ─────────────────────────────────────────────────────────────────
 OVERRIDE_TIER1 = "--override-tier1" in sys.argv
@@ -136,15 +134,27 @@ def build_pipeline() -> Pipeline:
             ("num", "passthrough", NUMERIC_FEATURES),
         ]
     )
+    # FIX 8: random_state=42 already set; leaving explicit for clarity
     model = GradientBoostingRegressor(
         n_estimators=300,
         learning_rate=0.05,
         max_depth=4,
         min_samples_leaf=5,
         subsample=0.8,
-        random_state=42,
+        random_state=42,        # FIX 8 — stabilised
     )
     return Pipeline([("preprocessor", preprocessor), ("model", model)])
+
+
+# ADD 4 — compute confidence from CV MAE
+def _confidence_from_mae(cv_mae: float) -> float:
+    """
+    Maps CV MAE → confidence score (0–100).
+    Lower MAE = higher confidence. Floor at 50, ceiling at 90.
+    Formula: confidence = 90 - (cv_mae / MAX_AED_MONTHLY * 90)
+    """
+    raw = 90.0 - (cv_mae / MAX_AED_MONTHLY * 90.0)
+    return round(float(np.clip(raw, 50.0, 90.0)), 1)
 
 
 def train_and_impute() -> None:
@@ -154,22 +164,25 @@ def train_and_impute() -> None:
     df = _load_data()
     df = _prepare_features(df)
 
+    # Ensure confidence_score column exists (transform.py sets it; guard for
+    # standalone runs or schema migration)
+    if "confidence_score" not in df.columns:
+        df["confidence_score"] = 0.0
+    if "salary_imputed_flag" not in df.columns:
+        df["salary_imputed_flag"] = df["salary_source"] != "reported"
+
     _print_diagnostic(df)
 
-    # Training set: reported rows with salary > 0
     reported = df[
         (df["salary_source"] == "reported") &
         (df["salary_aed_monthly"] > 0)
     ].copy()
     reported = reported[reported["salary_aed_monthly"].between(2_000, 200_000)]
 
-    # Rows to predict
     if OVERRIDE_TIER1:
-        # Bootstrap mode: target all Tier-1 imputed rows for refinement
         to_predict_mask = df["salary_source"].str.startswith("imputed", na=False)
         predict_label   = "Tier-1 imputed (override)"
     else:
-        # Standard mode: only rows still at zero
         to_predict_mask = df["salary_aed_monthly"] == 0
         predict_label   = "zero-salary"
 
@@ -182,19 +195,13 @@ def train_and_impute() -> None:
         print(
             f"\n    {Fore.YELLOW}⚠  Only {len(reported)} usable training rows "
             f"(need ≥ {MIN_TRAINING_ROWS}).\n"
-            f"       Skipping ML imputation — no model saved.\n"
-            f"       Current salary coverage: "
-            f"{round((df['salary_aed_monthly'] > 0).mean() * 100, 1)}%"
-            f"{Style.RESET_ALL}"
+            f"       Skipping ML imputation — no model saved.{Style.RESET_ALL}"
         )
         return
 
     if missing.empty:
         if OVERRIDE_TIER1:
-            print(
-                f"    {Fore.YELLOW}⚠  No Tier-1 imputed rows found.\n"
-                f"       Nothing to override — did Tier 1 run correctly?{Style.RESET_ALL}"
-            )
+            print(f"    {Fore.YELLOW}⚠  No Tier-1 imputed rows found.{Style.RESET_ALL}")
         else:
             print(f"    {Fore.GREEN}✓  No missing salaries to impute.{Style.RESET_ALL}")
         return
@@ -217,14 +224,15 @@ def train_and_impute() -> None:
     cv_mae = float(-cv_scores.mean())
     print(f"    CV MAE ({n_folds}-fold): AED {cv_mae:,.0f}/month")
 
-    # Bootstrap guard: don't override Tier 1 if model is too noisy
+    # ADD 4 — confidence score derived from MAE
+    ml_confidence = _confidence_from_mae(cv_mae)
+    print(f"    ML confidence score : {ml_confidence}")
+
     if OVERRIDE_TIER1 and cv_mae > BOOTSTRAP_MAE_CEILING:
         print(
             f"\n    {Fore.YELLOW}⚠  CV MAE ({cv_mae:,.0f}) exceeds ceiling "
             f"({BOOTSTRAP_MAE_CEILING:,}).\n"
-            f"       Model too noisy to safely override Tier-1 values.\n"
-            f"       Tier-1 imputed salaries kept as-is.\n"
-            f"       Tip: populate more salary data or expand the benchmark CSV.{Style.RESET_ALL}"
+            f"       Model too noisy — Tier-1 values kept as-is.{Style.RESET_ALL}"
         )
         return
 
@@ -234,7 +242,11 @@ def train_and_impute() -> None:
     predictions = pipeline.predict(X_pred)
     predictions = np.clip(predictions, 2_000, 200_000)
 
-    df.loc[missing.index, "salary_aed_monthly"] = predictions.round(0)
+    # Write salary + source + imputed flag + confidence
+    df.loc[missing.index, "salary_aed_monthly"]  = predictions.round(0)
+    df.loc[missing.index, "salary_imputed_flag"] = True
+    df.loc[missing.index, "confidence_score"]    = ml_confidence   # ADD 4
+
     if OVERRIDE_TIER1:
         df.loc[missing.index, "salary_source"] = "imputed_model_override"
     else:
@@ -259,19 +271,20 @@ def train_and_impute() -> None:
     if META_PATH.exists():
         with open(META_PATH) as f:
             meta = json.load(f)
-        meta["salary_source_split"] = df["salary_source"].value_counts().to_dict()
-        meta["salary_coverage_pct"] = round(
-            (df["salary_aed_monthly"] > 0).mean() * 100, 1
-        )
+        meta["salary_source_split"]         = df["salary_source"].value_counts().to_dict()
+        meta["salary_coverage_pct"]         = round((df["salary_aed_monthly"] > 0).mean() * 100, 1)
         meta["salary_model_cv_mae"]         = round(cv_mae, 0)
+        meta["salary_model_confidence"]     = ml_confidence          # ADD 4
         meta["salary_model_bootstrap_mode"] = OVERRIDE_TIER1
+        meta["avg_confidence"]              = round(df["confidence_score"].mean(), 1)
         with open(META_PATH, "w") as f:
             json.dump(meta, f, indent=2)
 
     final_coverage = round((df["salary_aed_monthly"] > 0).mean() * 100, 1)
     print(f"\n    {Fore.GREEN}✅ Salary model complete{Style.RESET_ALL}")
-    print(f"       Final salary coverage : {final_coverage}%")
-    print(f"       Source breakdown      : {df['salary_source'].value_counts().to_dict()}")
+    print(f"       Final salary coverage  : {final_coverage}%")
+    print(f"       ML confidence score    : {ml_confidence}")
+    print(f"       Source breakdown       : {df['salary_source'].value_counts().to_dict()}")
 
 
 if __name__ == "__main__":

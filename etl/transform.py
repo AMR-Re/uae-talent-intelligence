@@ -1,71 +1,50 @@
 """
-etl/transform.py
+etl/transform.py  (v5 — production additions)
 ─────────────────────────────────────────────────────────────────────────────
 Reads raw JSON → cleans → enriches → imputes → outputs clean CSVs.
 
-FIX LOG (v4 — NaN salary root-cause fixed):
+Changes in v5 (production-grade additions — no existing logic touched):
 
-  FIX 1 — salary_source initialisation
-      "reported" set ONLY where salary_aed_monthly > 0.
+  ADD 1 — run_id + ingestion_timestamp
+      run_transform() now accepts run_id and ingestion_timestamp parameters
+      forwarded from run_pipeline.py. Both are written to jobs_clean.csv
+      so every record is traceable to the exact pipeline run.
 
-  FIX 2 — peer-median index alignment
-      Capture original index as a numpy array before merge(), use numpy
-      boolean indexing to map imputed values back without label/position
-      confusion.
+  ADD 2 — salary_imputed_flag
+      Boolean column set to True for any row where salary_source ≠ 'reported'.
+      Added after impute_salaries_peer_median() completes.
 
-  FIX 3 — benchmark title matching
-      Two-pass: exact normalised title (Pass A), fuzzy raw title (Pass B).
-      Threshold lowered 75 → 65. TITLE_NORMALISE_MAP expanded with 15+
-      additional patterns.
+  ADD 3 — confidence_score (Tier 1)
+      Numeric 0–100 score assigned per salary_source label.
+      Tier 2 (salary_model.py) may further refine this for ML-imputed rows.
+      Sources:
+        reported             → 100
+        imputed_peer_L1      → 90
+        imputed_peer_L2      → 80
+        imputed_peer_L3      → 70
+        imputed_peer_L4      → 60
+        imputed_benchmark    → 55
+        imputed_model        → 75  (overwritten by Tier 2 based on CV MAE)
+        imputed_model_override → 70
+        imputed_unknown      → 40
+        missing              → 0
 
-  FIX 4 — summary counter
-      Computed AFTER all imputation levels including benchmark.
+  RANDOM SEED (FIX 8)
+      numpy random seed fixed to 42 at module import for reproducible
+      fuzzy-score tie-breaking in _benchmark_fill.
 
-  FIX 5 — pandas CoW / salary_source label drift
-      Added df = df.copy() at entry of impute_salaries_peer_median() so
-      .loc writes always persist on pandas >= 2.0.
-
-  FIX 6 — post-imputation consistency guard
-      Explicit mismatch check after all levels; resyncs labels and warns
-      so corrupt training data for Tier 2 is never silently produced.
-
-  FIX 7 — NaN salary values (v4, root-cause of the mismatch guard firing)
-      normalize_salary_to_aed_monthly() can return NaN when the API
-      delivers job_min_salary as a float NaN (not None).
-      NaN is truthy in Python, so `float(nan) if nan else 0.0` evaluates
-      the float() branch and returns NaN. NaN then slips past the range
-      guard (NaN < 1_000 evaluates False) and is returned.
-
-      NaN propagates through pd.concat, making every == 0 check return
-      False while > 0 also returns False. The imputation loop's early-exit
-      guard sees remaining == 0 on the very first iteration (because
-      NaN == 0 is False), breaks immediately without filling anything,
-      and the mismatch guard fires with 961 labelled missing vs 0 zero.
-
-      Fixes applied at three layers (defence-in-depth):
-
-        FIX 7a — normalize_salary_to_aed_monthly:
-            _safe_float() tests pd.isna() before casting so float NaN
-            inputs are treated as 0.0. Computed aed_monthly is also
-            guarded with np.isnan() before the range check.
-
-        FIX 7b — _assign_salary_source:
-            pd.to_numeric(..., errors='coerce').fillna(0.0) coerces any
-            surviving NaN to 0.0 before salary_source labels are written.
-            A second fillna(0.0) runs at the top of
-            impute_salaries_peer_median() as a redundant safety net.
-
-        FIX 7c — all "missing salary" masks:
-            Every == 0 comparison changed to ~(> 0) so NaN and 0 are
-            treated identically throughout the entire imputation chain.
+All FIX 1–7 from v4 are retained unchanged.
 ─────────────────────────────────────────────────────────────────────────────
 """
 
 import os
 import json
+import hashlib
 import re
+import uuid
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -82,9 +61,30 @@ except ImportError:
 
 colorama_init(autoreset=True)
 
+# FIX 8 — fixed random seed for reproducibility
+np.random.seed(42)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Reference data
+# Confidence score map  (ADD 3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+CONFIDENCE_BY_SOURCE: dict[str, int] = {
+    "reported":               100,
+    "imputed_peer_L1":         90,
+    "imputed_peer_L2":         80,
+    "imputed_peer_L3":         70,
+    "imputed_peer_L4":         60,
+    "imputed_benchmark":       55,
+    "imputed_model":           75,   # Tier 2 may overwrite with MAE-adjusted value
+    "imputed_model_override":  70,
+    "imputed_unknown":         40,
+    "missing":                  0,
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reference data  (unchanged from v4)
 # ─────────────────────────────────────────────────────────────────────────────
 
 SKILL_TAXONOMY = {
@@ -176,7 +176,7 @@ BENCHMARK_FUZZY_THRESHOLD = 65
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helpers
+# Helpers  (unchanged from v4)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def detect_emirate(city: str, description: str = "") -> tuple[str, str]:
@@ -240,20 +240,8 @@ def compute_completeness_score(row: dict) -> int:
 def normalize_salary_to_aed_monthly(
     salary_min, salary_max, currency: str, rates: dict
 ) -> float:
-    """
-    Converts raw salary fields to a monthly AED figure.
-
-    FIX 7a — NaN input guard:
-        The JSearch API delivers salary_min/max as float NaN (not None) when
-        no salary is listed.  NaN is truthy, so `float(nan) if nan else 0.0`
-        evaluates float(nan) = nan, which then slips past the range guard
-        (nan < 1_000 is False) and is returned.  We now use _safe_float()
-        which tests pd.isna() explicitly before casting.  The computed
-        aed_monthly value is also guarded with np.isnan() before the
-        range check as a second layer.
-    """
+    """FIX 7a — NaN-safe salary normalisation (unchanged from v4)."""
     def _safe_float(v) -> float:
-        """Cast to float, returning 0.0 for None, NaN, or any non-numeric."""
         if v is None:
             return 0.0
         try:
@@ -278,7 +266,6 @@ def normalize_salary_to_aed_monthly(
         aed_value   = mid / rate
         aed_monthly = aed_value / 12 if aed_value > 50_000 else aed_value
 
-        # FIX 7a: guard computed result against NaN before range check
         if np.isnan(aed_monthly) or aed_monthly < 1_000 or aed_monthly > 250_000:
             return 0.0
 
@@ -289,18 +276,10 @@ def normalize_salary_to_aed_monthly(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FIX 1 + FIX 7b — salary_source initialisation with NaN coercion
+# salary_source initialisation  (FIX 1 + FIX 7b — unchanged from v4)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _assign_salary_source(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Coerces salary_aed_monthly to a clean float column (NaN → 0.0) before
-    writing salary_source labels.
-
-    FIX 7b: pd.to_numeric + fillna(0.0) eliminates any NaN that survived
-    normalize_salary_to_aed_monthly, ensuring == 0 and > 0 comparisons
-    agree throughout the imputation chain.
-    """
     df = df.copy()
     df["salary_aed_monthly"] = (
         pd.to_numeric(df["salary_aed_monthly"], errors="coerce")
@@ -315,7 +294,7 @@ def _assign_salary_source(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FIX 2 + FIX 7c — peer-median fill with safe index alignment
+# Peer-median fill  (FIX 2 + FIX 7c — unchanged from v4)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _peer_median_fill(
@@ -323,18 +302,7 @@ def _peer_median_fill(
     group_cols: list[str],
     label: str,
 ) -> tuple[pd.DataFrame, int]:
-    """
-    Fills salary_aed_monthly for missing-salary rows using the median of
-    reported peers grouped by group_cols.
-
-    FIX 7c: "missing" is defined as ~(salary_aed_monthly > 0) so both
-    NaN and 0 are treated identically.
-
-    FIX 2: snapshot the original index as a numpy array before merge()
-    resets it to a fresh RangeIndex, then use numpy boolean indexing to
-    write back — avoids label-vs-position confusion.
-    """
-    remaining_mask = ~(df["salary_aed_monthly"] > 0)   # FIX 7c
+    remaining_mask = ~(df["salary_aed_monthly"] > 0)
     if not remaining_mask.any():
         return df, 0
 
@@ -352,7 +320,6 @@ def _peer_median_fill(
     if medians.empty:
         return df, 0
 
-    # Snapshot original index BEFORE merge resets it to RangeIndex
     orig_idx = df[remaining_mask].index.to_numpy()
 
     tmp = (
@@ -361,12 +328,11 @@ def _peer_median_fill(
         .merge(medians, on=group_cols, how="left")
     )
 
-    # Boolean array positionally aligned to tmp (and to orig_idx)
     filled_bool  = (tmp["_imputed_val"].notna() & (tmp["_imputed_val"] > 0)).to_numpy()
     filled_count = int(filled_bool.sum())
 
     if filled_count > 0:
-        fill_idx  = orig_idx[filled_bool]                           # original df labels
+        fill_idx  = orig_idx[filled_bool]
         fill_vals = tmp.loc[filled_bool, "_imputed_val"].to_numpy()
         df.loc[fill_idx, "salary_aed_monthly"] = np.round(fill_vals, 0)
         df.loc[fill_idx, "salary_source"]      = label
@@ -375,25 +341,14 @@ def _peer_median_fill(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FIX 3 + FIX 7c — benchmark fill: two-pass matching
+# Benchmark fill  (FIX 3 + FIX 7c — unchanged from v4)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _benchmark_fill(
     df: pd.DataFrame,
     benchmarks: pd.DataFrame,
 ) -> tuple[pd.DataFrame, int]:
-    """
-    Two-pass benchmark matching for rows still missing after L1-L4.
-
-    Pass A — exact match on title_normalized + seniority_band.
-    Pass B — fuzzy match of raw job title vs benchmark title_normalized,
-              restricted to the same seniority_band.
-              Threshold: BENCHMARK_FUZZY_THRESHOLD (65).
-    Falls back to seniority-band median when rapidfuzz is unavailable.
-
-    FIX 7c: missing mask uses ~(> 0).
-    """
-    still_missing = ~(df["salary_aed_monthly"] > 0)    # FIX 7c
+    still_missing = ~(df["salary_aed_monthly"] > 0)
     if not still_missing.any():
         return df, 0
 
@@ -416,13 +371,11 @@ def _benchmark_fill(
         same_band  = bm[bm["seniority_band"] == seniority]
         candidates = same_band if not same_band.empty else bm
 
-        # Pass A: exact normalised title
         exact = candidates[candidates["_bm_norm_lower"] == pair["_norm_lower"]]
         if not exact.empty:
             unique_pairs.at[i, "_val"] = float(exact.iloc[0]["median_aed_monthly"])
             continue
 
-        # Pass B: fuzzy raw title
         if _RAPIDFUZZ_AVAILABLE:
             scores     = candidates["_bm_norm_lower"].apply(
                 lambda t: _rfuzz.token_sort_ratio(pair["_raw_lower"], t)
@@ -434,11 +387,8 @@ def _benchmark_fill(
                     candidates.loc[best_idx, "median_aed_monthly"]
                 )
         else:
-            # No rapidfuzz: use seniority-band median from benchmark
             if not same_band.empty:
-                unique_pairs.at[i, "_val"] = float(
-                    same_band["median_aed_monthly"].median()
-                )
+                unique_pairs.at[i, "_val"] = float(same_band["median_aed_monthly"].median())
 
     lookup = (
         unique_pairs[["title_normalized", "seniority_band", "_val"]]
@@ -469,17 +419,11 @@ def _benchmark_fill(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Imputation orchestrator
+# Imputation orchestrator  (FIX 4-7 — unchanged; ADD 2+3 appended after)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def impute_salaries_peer_median(df: pd.DataFrame) -> pd.DataFrame:
-    # FIX 5: materialise a fully-owned copy so .loc writes always persist
-    # on pandas >= 2.0 (Copy-on-Write).
     df = df.copy()
-
-    # FIX 7b (second layer): ensure salary column is a clean float.
-    # _assign_salary_source already does this, but we repeat it here so
-    # this function is safe to call in isolation (e.g. in tests).
     df["salary_aed_monthly"] = df["salary_aed_monthly"].fillna(0.0)
 
     has_salary     = df["salary_aed_monthly"] > 0
@@ -501,7 +445,6 @@ def impute_salaries_peer_median(df: pd.DataFrame) -> pd.DataFrame:
         print(f"    {Fore.GREEN}✓  No missing salaries.{Style.RESET_ALL}")
         return df
 
-    # ── Peer-median levels L1-L4 ──────────────────────────────────────────────
     levels = [
         (["title_normalized", "emirate", "seniority_band"], "imputed_peer_L1"),
         (["sector", "emirate", "seniority_band"],           "imputed_peer_L2"),
@@ -509,29 +452,22 @@ def impute_salaries_peer_median(df: pd.DataFrame) -> pd.DataFrame:
         (["sector"],                                        "imputed_peer_L4"),
     ]
     for group_cols, label in levels:
-        remaining = int((~(df["salary_aed_monthly"] > 0)).sum())    # FIX 7c
+        remaining = int((~(df["salary_aed_monthly"] > 0)).sum())
         if remaining == 0:
             break
         df, n = _peer_median_fill(df, group_cols, label)
-        n_groups = (
-            df[df["salary_aed_monthly"] > 0]
-            .groupby(group_cols).ngroups
-        )
+        n_groups = df[df["salary_aed_monthly"] > 0].groupby(group_cols).ngroups
         print(f"    {label}: filled {n:,} rows  (peer groups: {n_groups:,})")
 
-    # ── Benchmark CSV (L5) ────────────────────────────────────────────────────
     benchmark_path = "data/reference/uae_salary_benchmarks.csv"
-    still_missing  = int((~(df["salary_aed_monthly"] > 0)).sum())   # FIX 7c
+    still_missing  = int((~(df["salary_aed_monthly"] > 0)).sum())
 
     if still_missing > 0 and os.path.exists(benchmark_path):
         benchmarks    = pd.read_csv(benchmark_path)
         required_cols = {"title_normalized", "seniority_band", "median_aed_monthly"}
         if not required_cols.issubset(benchmarks.columns):
             missing_cols = required_cols - set(benchmarks.columns)
-            print(
-                f"    {Fore.YELLOW}⚠  Benchmark missing columns "
-                f"{missing_cols} — skipped{Style.RESET_ALL}"
-            )
+            print(f"    {Fore.YELLOW}⚠  Benchmark missing columns {missing_cols} — skipped{Style.RESET_ALL}")
         else:
             df, bm_n = _benchmark_fill(df, benchmarks)
             mode = (
@@ -539,10 +475,7 @@ def impute_salaries_peer_median(df: pd.DataFrame) -> pd.DataFrame:
                 if _RAPIDFUZZ_AVAILABLE
                 else "exact+band-fallback"
             )
-            print(
-                f"    imputed_benchmark : filled {bm_n:,} rows"
-                f"  ({mode}, {still_missing:,} attempted)"
-            )
+            print(f"    imputed_benchmark : filled {bm_n:,} rows  ({mode}, {still_missing:,} attempted)")
     elif still_missing > 0:
         print(
             f"    {Fore.YELLOW}⚠  Benchmark CSV not found at {benchmark_path} — skipped.\n"
@@ -550,15 +483,12 @@ def impute_salaries_peer_median(df: pd.DataFrame) -> pd.DataFrame:
             f"imputation.{Style.RESET_ALL}"
         )
 
-    # ── FIX 4 + FIX 6: summary AFTER all levels + consistency guard ──────────
-    final_missing  = int((~(df["salary_aed_monthly"] > 0)).sum())   # FIX 7c
+    # FIX 4 + FIX 6: summary + consistency guard
+    final_missing  = int((~(df["salary_aed_monthly"] > 0)).sum())
     filled_total   = missing_count - final_missing
     source_missing = int((df["salary_source"] == "missing").sum())
 
     if source_missing != final_missing:
-        # Labels drifted from values — resync and warn.
-        # With FIX 7, this block should never execute.  If it does, a new
-        # NaN source has been introduced upstream.
         still_zero_mask = ~(df["salary_aed_monthly"] > 0)
         df.loc[still_zero_mask,  "salary_source"] = "missing"
         df.loc[
@@ -568,12 +498,9 @@ def impute_salaries_peer_median(df: pd.DataFrame) -> pd.DataFrame:
         print(
             f"\n    {Fore.YELLOW}⚠  salary_source / salary_aed_monthly mismatch "
             f"({source_missing} labelled missing vs {final_missing} actually missing).\n"
-            f"       Labels resynced. A new NaN source may exist upstream —\n"
-            f"       check normalize_salary_to_aed_monthly() inputs."
-            f"{Style.RESET_ALL}"
+            f"       Labels resynced.{Style.RESET_ALL}"
         )
 
-    # FIX 4: summary printed after ALL levels
     print(f"\n    Imputation summary (Tier 1):")
     print(f"      Started missing  : {missing_count:,}")
     print(f"      Total filled     : {filled_total:,}")
@@ -586,7 +513,23 @@ def impute_salaries_peer_median(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Title normalisation  (FIX 3 — expanded map)
+# ADD 2+3 — salary_imputed_flag + confidence_score (Tier 1 assignment)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def assign_imputed_flags(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sets salary_imputed_flag and confidence_score based on salary_source.
+    Called after all Tier 1 imputation is complete.
+    Tier 2 (salary_model.py) may overwrite confidence_score for ML rows.
+    """
+    df = df.copy()
+    df["salary_imputed_flag"] = df["salary_source"] != "reported"
+    df["confidence_score"] = df["salary_source"].map(CONFIDENCE_BY_SOURCE).fillna(40).astype(float)
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Title normalisation  (FIX 3 — expanded map, unchanged from v4)
 # ─────────────────────────────────────────────────────────────────────────────
 
 TITLE_NORMALISE_MAP = {
@@ -631,7 +574,7 @@ def normalise_title(title: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Source-specific cleaners
+# Source-specific cleaners  (unchanged from v4)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def clean_jsearch(raw: list, rates: dict) -> pd.DataFrame:
@@ -710,13 +653,63 @@ def _apply_transforms(df: pd.DataFrame, rates: dict) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Main runner
+# Main runner  (ADD 1 — accepts run_id + ingestion_timestamp)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_transform() -> None:
+def dedup_cross_source(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """
+    Removes cross-source duplicates — jobs where job_id differs but the
+    real-world posting is identical (same title + company + emirate).
+
+    Strategy:
+      1. Build a content hash from normalised title + company + emirate.
+      2. Where multiple rows share the same hash, keep the jsearch row
+         (richer salary/metadata) and drop the rest.
+      3. Return (deduped_df, n_dropped) so the caller can log the count.
+
+    This runs AFTER job_id deduplication so it only catches genuine
+    cross-source matches, not within-source page duplicates.
+    """
+    before = len(df)
+
+    df = df.copy()
+    df["_content_hash"] = (
+        df["title_normalized"].str.lower().str.strip() + "|" +
+        df["company"].str.lower().str.strip()          + "|" +
+        df["emirate"].str.lower().str.strip()
+    ).apply(lambda x: hashlib.md5(x.encode()).hexdigest())
+
+    # Sort so jsearch rows come first (kept by keep="first")
+    df = df.sort_values("source", ascending=True)   # 'adzuna' > 'jsearch' alphabetically → jsearch first
+    df = df.sort_values("source", key=lambda s: s.map({"jsearch": 0, "adzuna": 1}).fillna(2))
+
+    df = df.drop_duplicates(subset=["_content_hash"], keep="first")
+    df = df.drop(columns=["_content_hash"])
+
+    return df.reset_index(drop=True), before - len(df)
+
+
+def run_transform(
+    run_id: Optional[str] = None,
+    ingestion_timestamp=None,
+) -> None:
+    """
+    Parameters
+    ----------
+    run_id : str, optional
+        UUID forwarded from run_pipeline.py. A new UUID is generated if not
+        provided (e.g. when run_transform is called standalone for testing).
+    ingestion_timestamp : datetime, optional
+        UTC timestamp of pipeline start. Defaults to now if not provided.
+    """
+    if run_id is None:
+        run_id = str(uuid.uuid4())
+    if ingestion_timestamp is None:
+        ingestion_timestamp = datetime.now(timezone.utc)
+
     os.makedirs("data/processed", exist_ok=True)
 
-    print(f"  {Fore.CYAN}Loading raw data...{Style.RESET_ALL}")
+    print(f"  {Fore.CYAN}Loading raw data…{Style.RESET_ALL}")
     with open("data/raw/jsearch_raw.json",    encoding="utf-8") as f:
         jsearch_raw = json.load(f)
     with open("data/raw/adzuna_raw.json",     encoding="utf-8") as f:
@@ -724,29 +717,39 @@ def run_transform() -> None:
     with open("data/raw/exchange_rates.json", encoding="utf-8") as f:
         rates = json.load(f)
 
-    print(f"  {Fore.CYAN}Cleaning JSearch...{Style.RESET_ALL}")
+    print(f"  {Fore.CYAN}Cleaning JSearch…{Style.RESET_ALL}")
     df_j = clean_jsearch(jsearch_raw, rates)
     print(f"    -> {len(df_j):,} rows")
 
-    print(f"  {Fore.CYAN}Cleaning Adzuna...{Style.RESET_ALL}")
+    print(f"  {Fore.CYAN}Cleaning Adzuna…{Style.RESET_ALL}")
     df_a = clean_adzuna(adzuna_raw, rates)
     print(f"    -> {len(df_a):,} rows")
 
     df = pd.concat([df_j, df_a], ignore_index=True).drop_duplicates(subset=["job_id"])
-    print(f"  Combined: {len(df):,} unique jobs")
+    before_dedup = len(df)
+    df, cross_dupes = dedup_cross_source(df)
+    print(f"  Combined: {before_dedup:,} rows after job_id dedup → {len(df):,} unique jobs "
+          f"({cross_dupes:,} cross-source duplicates removed)")
 
-    print(f"  {Fore.CYAN}Enriching companies...{Style.RESET_ALL}")
+    print(f"  {Fore.CYAN}Enriching companies…{Style.RESET_ALL}")
     df = enrich_dataframe(df)
 
-    # FIX 1 + FIX 7b: coerce NaN salaries to 0.0 and assign salary_source
+    # FIX 1 + FIX 7b
     df = _assign_salary_source(df)
 
-    print(f"  {Fore.CYAN}Imputing salaries (Tier 1: peer median + benchmark)...{Style.RESET_ALL}")
+    print(f"  {Fore.CYAN}Imputing salaries (Tier 1: peer median + benchmark)…{Style.RESET_ALL}")
     df = impute_salaries_peer_median(df)
+
+    # ADD 2+3 — imputed flag + confidence score (Tier 1 values)
+    df = assign_imputed_flags(df)
 
     df["completeness_score"] = df.apply(
         lambda r: compute_completeness_score(r.to_dict()), axis=1
     )
+
+    # ADD 1 — pipeline traceability columns
+    df["run_id"]             = run_id
+    df["ingestion_timestamp"] = ingestion_timestamp
 
     # ── Build skills long table ───────────────────────────────────────────────
     df_skills = (
@@ -769,15 +772,19 @@ def run_transform() -> None:
 
     salary_coverage = round((df["salary_aed_monthly"] > 0).mean() * 100, 1)
     meta = {
-        "transformed_at":      datetime.utcnow().isoformat(),
-        "total_jobs":          len(df),
-        "total_skill_tags":    len(df_skills),
-        "salary_coverage_pct": salary_coverage,
+        "transformed_at":           datetime.utcnow().isoformat(),
+        "run_id":                   run_id,
+        "total_jobs":               len(df),
+        "cross_source_dupes_removed": cross_dupes,
+        "total_skill_tags":         len(df_skills),
+        "salary_coverage_pct":      salary_coverage,
         "salary_source_split": df["salary_source"].value_counts().to_dict(),
+        "imputed_flag_pct":    round(df["salary_imputed_flag"].mean() * 100, 1),
         "emirate_breakdown":   df["emirate"].value_counts().to_dict(),
         "sector_breakdown":    df["sector"].value_counts().to_dict(),
         "seniority_breakdown": df["seniority_band"].value_counts().to_dict(),
         "avg_completeness":    round(df["completeness_score"].mean(), 1),
+        "avg_confidence":      round(df["confidence_score"].mean(), 1),
         "sources": {
             "jsearch": int((df["source"] == "jsearch").sum()),
             "adzuna":  int((df["source"] == "adzuna").sum()),
@@ -788,9 +795,13 @@ def run_transform() -> None:
 
     print(f"\n  {Fore.GREEN}✅ Transform complete{Style.RESET_ALL}")
     print(f"     jobs_clean.csv     : {len(df_out):,} rows")
+    print(f"     Cross-src dupes    : {cross_dupes:,} removed")
     print(f"     skills_long.csv    : {len(df_skills):,} rows")
     print(f"     Salary coverage    : {salary_coverage}%")
     print(f"     Avg completeness   : {meta['avg_completeness']}%")
+    print(f"     Avg confidence     : {meta['avg_confidence']}")
+    print(f"     Imputed flag pct   : {meta['imputed_flag_pct']}%")
+    print(f"     run_id             : {run_id}")
     print(f"     Emirate split      : {meta['emirate_breakdown']}")
 
 

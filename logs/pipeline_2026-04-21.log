@@ -1,0 +1,102 @@
+2026-04-21T12:17:38Z  INFO      [root]  Pipeline started  run_id=9fb7fc4a-a184-4617-8140-a23abc178e3b
+2026-04-21T12:17:38Z  INFO      [root]  Stage skipped: Fetch (SKIP_FETCH=true) — reusing existing data/raw/ files
+2026-04-21T12:17:42Z  INFO      [root]  Stage complete: Transform  elapsed=3.9s
+2026-04-21T12:17:57Z  ERROR     [root]  Pipeline FAILED  run_id=9fb7fc4a-a184-4617-8140-a23abc178e3b  elapsed=19.2s  error=Invalid value '81.2' for dtype 'int64'
+Traceback (most recent call last):
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\internals\blocks.py", line 1115, in setitem
+    casted = np_can_hold_element(values.dtype, value)
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\dtypes\cast.py", line 1750, in np_can_hold_element
+    raise LossySetitemError
+pandas.errors.LossySetitemError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "d:\Downloads\uae-talent-intelligence\run_pipeline.py", line 161, in main
+    train_and_impute()
+    ~~~~~~~~~~~~~~~~^^
+  File "d:\Downloads\uae-talent-intelligence\etl\salary_model.py", line 248, in train_and_impute
+    df.loc[missing.index, "confidence_score"]    = ml_confidence   # ADD 4
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\indexing.py", line 938, in __setitem__
+    iloc._setitem_with_indexer(indexer, value, self.name)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\indexing.py", line 1953, in _setitem_with_indexer
+    self._setitem_with_indexer_split_path(indexer, value, name)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\indexing.py", line 2044, in _setitem_with_indexer_split_path
+    self._setitem_single_column(loc, value, pi)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\indexing.py", line 2181, in _setitem_single_column
+    self.obj._mgr.column_setitem(loc, plane_indexer, value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\internals\managers.py", line 1520, in column_setitem
+    new_mgr = col_mgr.setitem((idx,), value)
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\internals\managers.py", line 604, in setitem
+    return self.apply("setitem", indexer=indexer, value=value)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\internals\managers.py", line 442, in apply
+    applied = getattr(b, f)(**kwargs)
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\internals\blocks.py", line 1118, in setitem
+    nb = self.coerce_to_target_dtype(value, raise_on_upcast=True)
+  File "C:\Users\Amr\AppData\Roaming\Python\Python313\site-packages\pandas\core\internals\blocks.py", line 468, in coerce_to_target_dtype
+    raise TypeError(f"Invalid value '{other}' for dtype '{self.values.dtype}'")
+TypeError: Invalid value '81.2' for dtype 'int64'
+2026-04-21T12:20:22Z  INFO      [root]  Pipeline started  run_id=3828f466-60a0-4e26-a183-4b23cd7c4c94
+2026-04-21T12:20:22Z  INFO      [root]  Stage skipped: Fetch (SKIP_FETCH=true) — reusing existing data/raw/ files
+2026-04-21T12:20:27Z  INFO      [root]  Stage complete: Transform  elapsed=5.1s
+2026-04-21T12:20:47Z  INFO      [root]  Stage complete: Salary Model  elapsed=19.5s
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  Tables and indexes ready
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_top_skills
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_hiring_velocity
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_remote_analysis
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_salary_bands
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_skill_salary_premium
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_skill_heatmap
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_skill_cooccurrence
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_emerging_skills
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_company_radar
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_mnc_vs_local
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_pipeline_health
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_field_coverage
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_pipeline_runs
+2026-04-21T12:20:48Z  INFO      [extraction.load_db]  vw_jobs_detail
+2026-04-21T12:20:49Z  INFO      [extraction.load_db]  Read 996 jobs, 5,620 skill tags
+2026-04-21T12:20:49Z  INFO      [extraction.load_db]  Pipeline run started (id=2, run_id=3828f466…)
+2026-04-21T12:20:49Z  INFO      [extraction.load_db]  Schema validation passed  (996 rows, 0 issues)
+2026-04-21T12:20:50Z  INFO      [extraction.load_db]  Staging loaded: 996 rows (run_id=3828f466…)
+2026-04-21T12:20:51Z  INFO      [extraction.load_db]  DQ checks: 996 valid  0 warnings  0 invalid  | issues logged: 0 errors, 0 warnings
+2026-04-21T12:20:51Z  INFO      [extraction.load_db]  Merge complete: 0 inserted  996 updated  (996 total)
+2026-04-21T12:20:54Z  INFO      [extraction.load_db]  Skills: 5,620 tag rows for 995 jobs
+2026-04-21T12:20:54Z  INFO      [extraction.load_db]  Run 2 finished — status=success  inserted=0  updated=996
+2026-04-21T12:20:54Z  INFO      [root]  Stage complete: Load  elapsed=7.0s
+2026-04-21T12:20:54Z  INFO      [root]  Pipeline completed successfully  run_id=3828f466-60a0-4e26-a183-4b23cd7c4c94  elapsed=31.7s
+2026-04-21T12:32:05Z  INFO      [root]  Pipeline started  run_id=41e8b76d-b3a6-4772-820d-395f982aca01
+2026-04-21T12:32:05Z  INFO      [root]  Stage skipped: Fetch (SKIP_FETCH=true) — reusing existing data/raw/ files
+2026-04-21T12:32:07Z  INFO      [root]  Stage complete: Transform  elapsed=2.1s
+2026-04-21T12:32:17Z  INFO      [root]  Stage complete: Salary Model  elapsed=9.4s
+2026-04-21T12:32:17Z  INFO      [extraction.load_db]  Tables and indexes ready
+2026-04-21T12:32:17Z  INFO      [extraction.load_db]  vw_top_skills
+2026-04-21T12:32:17Z  INFO      [extraction.load_db]  vw_hiring_velocity
+2026-04-21T12:32:17Z  INFO      [extraction.load_db]  vw_remote_analysis
+2026-04-21T12:32:17Z  INFO      [extraction.load_db]  vw_salary_bands
+2026-04-21T12:32:17Z  INFO      [extraction.load_db]  vw_skill_salary_premium
+2026-04-21T12:32:17Z  INFO      [extraction.load_db]  vw_skill_heatmap
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  vw_skill_cooccurrence
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  vw_emerging_skills
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  vw_company_radar
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  vw_mnc_vs_local
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  vw_pipeline_health
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  vw_field_coverage
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  vw_pipeline_runs
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  vw_jobs_detail
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  Read 918 jobs, 5,177 skill tags
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  Pipeline run started (id=3, run_id=41e8b76d…)
+2026-04-21T12:32:18Z  INFO      [extraction.load_db]  Schema validation passed  (918 rows, 0 issues)
+2026-04-21T12:32:19Z  INFO      [extraction.load_db]  Staging loaded: 918 rows (run_id=41e8b76d…)
+2026-04-21T12:32:19Z  INFO      [extraction.load_db]  DQ checks: 918 valid  0 warnings  0 invalid  | issues logged: 0 errors, 0 warnings
+2026-04-21T12:32:19Z  INFO      [extraction.load_db]  Merge complete: 0 inserted  918 updated  (918 total)
+2026-04-21T12:32:20Z  INFO      [extraction.load_db]  Skills: 5,177 tag rows for 917 jobs
+2026-04-21T12:32:20Z  INFO      [extraction.load_db]  Run 3 finished — status=success  inserted=0  updated=918
+2026-04-21T12:32:20Z  INFO      [root]  Stage complete: Load  elapsed=3.6s
+2026-04-21T12:32:20Z  INFO      [root]  Pipeline completed successfully  run_id=41e8b76d-b3a6-4772-820d-395f982aca01  elapsed=15.1s

@@ -19,10 +19,6 @@ Indeed, and Glassdoor (via JSearch + Adzuna APIs) and surfaces intelligence for:
 
 ---
 
-## 🖥 Live Dashboard
-
-> 📊 [View Power BI Report](#) — replace with your published URL
-> ▶ [90-second walkthrough](#) — replace with your Loom link
 
 ---
 
@@ -211,7 +207,7 @@ vw_field_coverage      → Page 6 (Data Quality)
 vw_pipeline_runs       → Page 6 (Data Quality)
 ```
 
-See `dashboard/POWERBI_GUIDE.md` for detailed visual configuration.
+
 
 ---
 
