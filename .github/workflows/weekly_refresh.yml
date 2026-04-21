@@ -1,10 +1,22 @@
 # .github/workflows/weekly_refresh.yml
 # ─────────────────────────────────────────────────────────────────────────────
-# UAE Talent Intelligence — Automated Weekly Pipeline  (v2 — production-grade)
+# UAE Talent Intelligence — Automated Weekly Pipeline  (v3)
 #
-# Runs every Monday at 06:00 UAE time (02:00 UTC).
-# Now surfaces run_id, structured logs, and uploads both metadata + logs
-# as build artifacts so every run is traceable without DB access.
+# Changes in v3:
+#   - PART 1: RAPIDAPI_KEYS secret (comma-separated) fed to fetch_jobs.py
+#             for deterministic weekly key rotation. Primary key selected by
+#             ISO week number; one fallback key maximum per run.
+#   - PART 2: Node.js 24 opt-in via FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true.
+#             All actions pinned to versions that support Node.js 24.
+#
+# Required GitHub Secrets:
+#   SUPABASE_DB_URL          — postgres://... connection string
+#   RAPIDAPI_KEYS            — comma-separated RapidAPI keys (e.g. key1,key2,key3)
+#                              Single key also works; rotation activates with 2+
+#   ADZUNA_APP_ID            — Adzuna application ID
+#   ADZUNA_APP_KEY           — Adzuna application key
+#   EXCHANGE_API_KEY         — ExchangeRate-API key
+#   OPENCORPORATES_API_KEY   — OpenCorporates key (optional)
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: Weekly ETL Refresh
@@ -16,6 +28,10 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
+  # ── Node.js 24 opt-in ──────────────────────────────────────────────────────
+  # Forces all JavaScript actions in this workflow to run on Node.js 24.
+  # Ensures early compatibility before Node.js 20 is removed by GitHub.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   etl:
@@ -27,13 +43,13 @@ jobs:
       # ── Setup ──────────────────────────────────────────────────────────────
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4      # Node.js 24 compatible
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5  # v5 supports Node.js 24
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
+          cache: pip                   # Built-in pip caching; no separate cache action needed
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -43,9 +59,37 @@ jobs:
 
       - name: Copy reference files from repo
         run: |
-          # Reference files are committed to the repo (not gitignored)
-          cp data/reference/uae_salary_benchmarks.csv data/reference/ 2>/dev/null || echo "⚠  uae_salary_benchmarks.csv not found — L5 imputation will be skipped"
-          cp data/reference/company_profiles.csv      data/reference/ 2>/dev/null || echo "⚠  company_profiles.csv not found — enrichment fallback will be used"
+          cp data/reference/uae_salary_benchmarks.csv data/reference/ 2>/dev/null \
+            || echo "uae_salary_benchmarks.csv not found — L5 imputation will be skipped"
+          cp data/reference/company_profiles.csv data/reference/ 2>/dev/null \
+            || echo "company_profiles.csv not found — enrichment fallback will be used"
+
+      # ── Log key rotation plan (no secret values printed) ───────────────────
+
+      - name: Log key rotation plan
+        env:
+          RAPIDAPI_KEYS: ${{ secrets.RAPIDAPI_KEYS }}
+        run: |
+          python - <<'EOF'
+          import os
+          from datetime import date
+
+          keys_raw = os.getenv("RAPIDAPI_KEYS", "")
+          keys = [k.strip() for k in keys_raw.split(",") if k.strip()]
+          n = len(keys)
+          if n == 0:
+              print("RAPIDAPI_KEYS not set — pipeline will fail at fetch stage")
+          else:
+              iso_week     = date.today().isocalendar().week
+              primary_idx  = iso_week % n
+              fallback_idx = (primary_idx + 1) % n
+              print(f"Key rotation plan:")
+              print(f"  ISO week     : {iso_week}")
+              print(f"  Keys loaded  : {n}")
+              print(f"  Primary idx  : {primary_idx}")
+              print(f"  Fallback idx : {fallback_idx if n > 1 else 'N/A (single key)'}")
+              print(f"  Max keys/run : {'2' if n > 1 else '1'}")
+          EOF
 
       # ── Run pipeline ────────────────────────────────────────────────────────
 
@@ -54,32 +98,32 @@ jobs:
         env:
           DB_TARGET:               supabase
           SUPABASE_DB_URL:         ${{ secrets.SUPABASE_DB_URL }}
+          RAPIDAPI_KEYS:           ${{ secrets.RAPIDAPI_KEYS }}
           RAPIDAPI_KEY:            ${{ secrets.RAPIDAPI_KEY }}
           ADZUNA_APP_ID:           ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY:          ${{ secrets.ADZUNA_APP_KEY }}
           EXCHANGE_API_KEY:        ${{ secrets.EXCHANGE_API_KEY }}
           OPENCORPORATES_API_KEY:  ${{ secrets.OPENCORPORATES_API_KEY }}
-        run: |
-          python run_pipeline.py
-          echo "Pipeline exit code: $?"
+        run: python run_pipeline.py
 
       # ── Artifacts — always uploaded so failures are debuggable ─────────────
 
-      - name: Upload pipeline metadata and logs
+      - name: Upload pipeline artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4   # v4 supports Node.js 24
         with:
           name: pipeline-artifacts-run-${{ github.run_number }}
           path: |
             data/processed/transform_meta.json
+            data/raw/meta.json
             logs/
           retention-days: 30
 
-      # ── Failure notifications ───────────────────────────────────────────────
+      # ── Failure notification ────────────────────────────────────────────────
 
       - name: Open GitHub Issue on failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v7     # v7 supports Node.js 24
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -87,22 +131,21 @@ jobs:
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo:  context.repo.repo,
-              title: `🔴 Pipeline failed — run #${context.runNumber} (${date})`,
+              title: `Pipeline failed — run #${context.runNumber} (${date})`,
               body: [
                 `## Weekly ETL pipeline failed`,
                 ``,
-                `| Field | Value |`,
-                `|-------|-------|`,
-                `| Run   | [#${context.runNumber}](${runUrl}) |`,
-                `| Date  | ${date} |`,
+                `| Field   | Value |`,
+                `|---------|-------|`,
+                `| Run     | [#${context.runNumber}](${runUrl}) |`,
+                `| Date    | ${date} |`,
                 `| Trigger | \`${context.eventName}\` |`,
                 ``,
                 `**Next steps:**`,
-                `1. Check the [Actions log](${runUrl}) for the full error`,
-                `2. Download the \`pipeline-artifacts\` artifact for transform_meta.json and logs`,
-                `3. Re-run manually after fixing: Actions → Weekly ETL Refresh → Run workflow`,
-                ``,
-                `> This issue was opened automatically by the pipeline failure handler.`,
+                `1. Check the [Actions log](${runUrl}) for the error`,
+                `2. Download the pipeline-artifacts artifact for logs + transform_meta.json`,
+                `3. If error is 429 both keys exhausted, add a key to RAPIDAPI_KEYS secret`,
+                `4. Re-run manually: Actions > Weekly ETL Refresh > Run workflow`,
               ].join('\n'),
               labels: ['pipeline-failure', 'automated'],
             });
@@ -112,19 +155,27 @@ jobs:
       - name: Print pipeline summary
         if: success()
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "  ✅  Pipeline completed successfully"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          if [ -f data/processed/transform_meta.json ]; then
-            python -c "
-          import json
-          with open('data/processed/transform_meta.json') as f:
-              m = json.load(f)
-          print(f\"  run_id       : {m.get('run_id', 'n/a')}\")
-          print(f\"  total_jobs   : {m.get('total_jobs', 0):,}\")
-          print(f\"  salary_cov   : {m.get('salary_coverage_pct', 0)}%\")
-          print(f\"  avg_complete : {m.get('avg_completeness', 0)}%\")
-          print(f\"  avg_conf     : {m.get('avg_confidence', 0)}\")
-            "
-          fi
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Pipeline completed successfully"
+          python - <<'EOF'
+          import json, os
+
+          meta_path = "data/processed/transform_meta.json"
+          if os.path.exists(meta_path):
+              with open(meta_path) as f:
+                  m = json.load(f)
+              print(f"  run_id        : {m.get('run_id', 'n/a')}")
+              print(f"  total_jobs    : {m.get('total_jobs', 0):,}")
+              print(f"  cross-src dup : {m.get('cross_source_dupes_removed', 0):,} removed")
+              print(f"  salary_cov    : {m.get('salary_coverage_pct', 0)}%")
+              print(f"  avg_complete  : {m.get('avg_completeness', 0)}%")
+              print(f"  avg_conf      : {m.get('avg_confidence', 0)}")
+
+          raw_meta = "data/raw/meta.json"
+          if os.path.exists(raw_meta):
+              with open(raw_meta) as f:
+                  r = json.load(f)
+              kr = r.get("key_rotation", {})
+              if kr:
+                  print(f"  key idx used  : {kr.get('primary_key_index', '?')} / {kr.get('total_keys', '?')}")
+                  print(f"  fallback used : {kr.get('fallback_used', False)}")
+          EOF
