@@ -244,8 +244,8 @@ uae-talent-intelligence/
 │       └── company_cache.json         ← gitignored — API cache
 │
 ├── dashboard/
-│   ├── UAE_Talent_Intel.pbix    ← Power BI report file
-│   └── POWERBI_GUIDE.md         ← detailed visual build guide
+│   └── UAE_Talent_Intel.pbix    ← Power BI report file
+│   
 │
 └── .github/
     └── workflows/
